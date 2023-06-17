@@ -26,9 +26,9 @@
                 </child>
                 <child>
                     <object class="AdwStatusPage" id="status_page">
-                        <property name="icon-name">vanilla-installer-harddisk-symbolic</property>
+                        <property name="icon-name">drive-harddisk-symbolic</property>
                         <property name="title" translatable="yes">Select a Disk</property>
-                        <property name="description" translatable="yes">Select the disk where you want to install Vanilla OS</property>
+                        <property name="description" translatable="yes">Select the disk where you want to install zarya</property>
                         <child>
                             <object class="AdwPreferencesPage">
                                 <child>

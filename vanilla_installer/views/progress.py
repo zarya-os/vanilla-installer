@@ -30,6 +30,8 @@ class VanillaProgress(Gtk.Box):
     carousel_tour = Gtk.Template.Child()
     tour_button = Gtk.Template.Child()
     tour_box = Gtk.Template.Child()
+    tour_btn_back = Gtk.Template.Child()
+    tour_btn_next = Gtk.Template.Child()
     progressbar = Gtk.Template.Child()
     console_button = Gtk.Template.Child()
     console_box = Gtk.Template.Child()
@@ -41,8 +43,8 @@ class VanillaProgress(Gtk.Box):
         self.__tour = tour
         self.__terminal = Vte.Terminal()
         self.__font = Pango.FontDescription()
-        self.__font.set_family("Ubuntu Mono")
-        self.__font.set_size(13 * Pango.SCALE)
+        self.__font.set_family("Cascadia Mono PL")
+        self.__font.set_size(12 * Pango.SCALE)
         self.__font.set_weight(Pango.Weight.NORMAL)
         self.__font.set_stretch(Pango.Stretch.NORMAL)
 
@@ -50,6 +52,9 @@ class VanillaProgress(Gtk.Box):
 
         self.tour_button.connect(_("clicked"), self.__on_tour_button)
         self.console_button.connect(_("clicked"), self.__on_console_button)
+        self.tour_btn_back.connect(_("clicked"), self.__on_tour_back)
+        self.tour_btn_next.connect(_("clicked"), self.__on_tour_next)
+        self.carousel_tour.connect(_("page-changed"), self.__on_page_changed)
 
     def __on_tour_button(self, *args):
         self.tour_box.set_visible(True)
@@ -63,10 +68,28 @@ class VanillaProgress(Gtk.Box):
         self.tour_button.set_visible(True)
         self.console_button.set_visible(False)
 
+    def __on_tour_back(self, *args):
+        cur_index = self.carousel_tour.get_position()
+        page = self.carousel_tour.get_nth_page(cur_index - 1)
+        self.carousel_tour.scroll_to(page, True)
+
+    def __on_tour_next(self, *args):
+        cur_index = self.carousel_tour.get_position()
+        page = self.carousel_tour.get_nth_page(cur_index + 1)
+        self.carousel_tour.scroll_to(page, True)
+
+    def __on_page_changed(self, *args):
+        position = self.carousel_tour.get_position()
+        pages = self.carousel_tour.get_n_pages()
+
+        self.tour_btn_back.set_visible(position < pages and position > 0)
+        self.tour_btn_next.set_visible(position < pages - 1)
+
     def __build_ui(self):
         self.__terminal.set_cursor_blink_mode(Vte.CursorBlinkMode.ON)
         self.__terminal.set_font(self.__font)
         self.__terminal.set_mouse_autohide(True)
+        self.__terminal.set_input_enabled(False)
         self.console_output.append(self.__terminal)
         self.__terminal.connect("child-exited", self.on_vte_child_exited)
 
@@ -106,13 +129,18 @@ class VanillaProgress(Gtk.Box):
         self.carousel_tour.scroll_to(page, True)
 
     def __start_tour(self):
-        def run_async():
+        def run_async_progressbar():
             while True:
                 GLib.idle_add(self.progressbar.pulse)
+                time.sleep(1)
+                
+        def run_async_tour():
+            while True:
                 GLib.idle_add(self.__switch_tour)
-                time.sleep(5)
+                time.sleep(45)
 
-        RunAsync(run_async, None)
+        RunAsync(run_async_tour, None)
+        RunAsync(run_async_progressbar, None)
 
     def on_vte_child_exited(self, terminal, status, *args):
         terminal.get_parent().remove(terminal)

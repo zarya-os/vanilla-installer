@@ -18,16 +18,15 @@ import sys
 import time
 from gi.repository import Gtk, Gio, GLib, Adw
 
-from vanilla_installer.utils.run_async import RunAsync
-from vanilla_installer.windows.dialog_recovery import VanillaRecoveryDialog
-
+from vanilla_installer.windows.dialog_poweroff import VanillaPoweroffDialog
 
 @Gtk.Template(resource_path='/org/vanillaos/Installer/gtk/default-welcome.ui')
 class VanillaDefaultWelcome(Adw.Bin):
     __gtype_name__ = 'VanillaDefaultWelcome'
 
-    btn_recovery = Gtk.Template.Child()
-    btn_install = Gtk.Template.Child()
+    btn_live = Gtk.Template.Child()
+    btn_poweroff = Gtk.Template.Child()
+    btn_next = Gtk.Template.Child()
 
     def __init__(self, window, distro_info, key, step, **kwargs):
         super().__init__(**kwargs)
@@ -37,12 +36,33 @@ class VanillaDefaultWelcome(Adw.Bin):
         self.__step = step
 
         # signals
-        self.btn_recovery.connect('clicked', self.__on_recovery_clicked)
-        self.btn_install.connect("clicked", self.__window.next)
+        self.btn_next.connect("clicked", self.__window.next)
+        self.btn_live.connect('clicked', self.__on_live_clicked)
+        self.btn_poweroff.connect('clicked', self.__on_recovery_clicked)
 
     def get_finals(self):
         return {}
+    
+    def __on_live_clicked(self, button):
+        def close_window(_widget, response_id):
+            if response_id == "try":
+                _widget.destroy()
+                self.__window.destroy()
+            elif response_id == "cancel":
+                _widget.destroy()
+
+        dialog = Adw.MessageDialog()
+        dialog.set_transient_for(self.__window)
+        dialog.set_size_request(400, -1)
+        dialog.set_heading("Try zarya")
+        dialog.set_body("Use zarya in live session without installing.")
+        dialog.add_response("cancel", _("_Cancel"))
+        dialog.add_response("try", _("Try zarya"))
+        dialog.connect("response", close_window)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        dialog.present()
 
     def __on_recovery_clicked(self, button):
-        VanillaRecoveryDialog(self.__window).show()
+        VanillaPoweroffDialog(self.__window).show()
         

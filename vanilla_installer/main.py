@@ -52,9 +52,17 @@ class FirstSetupApplication(Adw.Application):
 
 
         win = self.props.active_window
-        if not win:
+        session_list = os.getenv("XDG_CURRENT_DESKTOP")
+        session = None
+
+        if session_list is not None:
+            session = session_list.split(":")
+
+        if win is None and session is not None and "zarya" in session:
             win = VanillaWindow(application=self)
-        win.present()
+            win.present()
+        else:
+            return
 
     def create_action(self, name, callback, shortcuts=None):
         """Add an application action.

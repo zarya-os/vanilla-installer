@@ -1,35 +1,27 @@
 {
     "log_file": "/etc/vanilla/installer.log",
-    "distro_name": "Vanilla OS",
+    "distro_name": "zarya",
     "distro_logo": "org.vanillaos.Installer", 
-    "pre_run": [
-        "sudo apx --sys update", 
-        "sudo apx --sys install -f"
-    ],
-    "post_run": [
-        "sudo apx --sys update", 
-        "sudo apx --sys install -f"
-    ],
     "tour": {
         "welcome": {
             "resource": "/org/vanillaos/Installer/assets/welcome.svg",
-            "title": "Welcome to Vanilla",
-            "description": "Designed to last over time and always be faithful to you."
+            "title": "Fast, free and full of new features",
+            "description": "The latest version of GNOME makes computing easier than ever."
        },
-       "control": {
-           "resource": "/org/vanillaos/Installer/assets/control-center.svg",
-           "title": "You're in Control",
-           "description": "Configure the system to your liking in the Vanilla Control Center."
+       "software": {
+           "resource": "/org/vanillaos/Installer/assets/software.svg",
+           "title": "All the applications you need",
+           "description": "Install and manage software from Flathub, Snap Store and Ubuntu archive."
        },
-       "containerized": {
-           "resource": "/org/vanillaos/Installer/assets/containerized.svg",
-           "title": "Containerized",
-           "description": "You never have to worry about breakage due to incompatible or conflicting packages."
+       "accessibility": {
+           "resource": "/org/vanillaos/Installer/assets/accessibility.svg",
+           "title": "Accessible for everyone",
+           "description": "GNOME is all about the belief that computing is meant for everyone."
        },
-       "completed": {
-           "resource": "/org/vanillaos/Installer/assets/complete.svg",
-           "title": "Complete and Reliable",
-           "description": "Use your system your way without anything getting in the way."
+       "help": {
+           "resource": "/org/vanillaos/Installer/assets/help.svg",
+           "title": "Help and Support",
+           "description": "The official Ubuntu documentation is available both online and via the Help icon in the dock."
        }
     },
     "steps": {
@@ -42,14 +34,8 @@
         "keyboard": {
             "template": "keyboard"
         },
-        "timezone": {
-            "template": "timezone"
-        },
         "disk": {
             "template": "disk"
-        },
-        "users": {
-            "template": "users"
         }
     }
 }

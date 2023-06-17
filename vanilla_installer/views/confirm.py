@@ -79,18 +79,6 @@ class VanillaConfirm(Adw.Bin):
                         value,
                         "input-keyboard-symbolic"
                     ))
-                elif key == "timezone":
-                    self.active_widgets.append(VanillaChoiceEntry(
-                        _("Timezone"),
-                        f"{value['region']} {value['zone']}",
-                        "preferences-system-time-symbolic"
-                    ))
-                elif key == "users":
-                    self.active_widgets.append(VanillaChoiceEntry(
-                        _("Users"),
-                        f"{value['username']} ({value['fullname']})",
-                        "system-users-symbolic"
-                    ))
                 elif key == "disk":
                     if "auto" in value:
                         self.active_widgets.append(VanillaChoiceEntry(

@@ -3,12 +3,10 @@ defaultsdir = join_paths(pkgdatadir, 'vanilla_installer/defaults')
 
 sources = [
   '__init__.py',
-  'welcome.py',
   'language.py',
   'keyboard.py',
-  'timezone.py',
-  'users.py',
   'disk.py',
+  'welcome.py',
 ]
 
 install_data(sources, install_dir: defaultsdir)

@@ -31,22 +31,7 @@ logger = logging.getLogger("Installer::Processor")
 
 
 class Processor:
-    @staticmethod
-    def gen_swap_size():
-        """
-        Reference: https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/storage_administration_guide/ch-swapspace#doc-wrapper
-        """
-        mem = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
-        mem = mem / (1024.0**3)
-        if mem <= 2:
-            return int(mem * 3 * 1024)
-        elif mem > 2 and mem <= 8:
-            return int(mem * 2 * 1024)
-        elif mem > 8 and mem <= 64:
-            return int(mem * 1.5 * 1024)
-        else:
-            return 4096
-
+    
     @staticmethod
     def gen_install_script(log_path, pre_run, post_run, finals):
         logger.info("processing the following final data: %s", finals)
@@ -55,44 +40,27 @@ class Processor:
         # if not os.path.exists(manifest_remove):
         manifest_remove = "/tmp/filesystem.manifest-remove"
         with open(manifest_remove, "w") as f:
-            f.write("vanilla-installer\n")
             f.write("gparted\n")
 
         arguments = [
             "sudo",
             "distinst",
+            "--run-ubuntu-drivers",
             "-s",
             "'/cdrom/casper/filesystem.squashfs'",
             "-r",
             f"'{manifest_remove}'",
             "-h",
-            "'vanilla'",
+            "'zarya'",
         ]
-
-        is_almost_supported = shutil.which("almost")
 
         # post install variables
         device_block = ""
         finals_disk = {}
-        finals_timezone = {}
 
         for final in finals:
             for key, value in final.items():
-                if key == "users":
-                    arguments = ["echo", f"'{value['password']}'", "|"] + arguments
-                    arguments += ["--username", f"'{value['username']}'"]
-                    arguments += ["--realname", f"'{value['fullname']}'"]
-                    arguments += [
-                        "--profile_icon",
-                        "'/usr/share/pixmaps/faces/yellow-rose.jpg'",
-                    ]
-                elif key == "timezone":
-                    arguments += [
-                        "--tz",
-                        "'{}/{}'".format(value["region"], value["zone"]),
-                    ]
-                    finals_timezone = final
-                elif key == "language":
+                if key == "language":
                     arguments += ["-l", f"'{value}'"]
                 elif key == "keyboard":
                     arguments += ["-k", f"'{value}'"]
@@ -101,53 +69,46 @@ class Processor:
                     if "auto" in value:
                         device_block = value["auto"]["disk"]
                         arguments += ["-b", f"'{device_block}'"]
-                        arguments += ["-t", f"'{device_block}:gpt'"]
-                        arguments += [
+                        if Systeminfo.is_uefi():
+                            arguments += ["-t", f"'{device_block}:gpt'"]
+                            arguments += [
                             "-n",
                             f"'{device_block}:primary:start:1024M:fat32:mount=/boot/efi:flags=esp'",
-                        ]
-                        arguments += [
+                            ]
+                            arguments += [
                             "-n",
-                            f"'{device_block}:primary:1024M:2048M:ext4:mount=/boot'",
-                        ]
-                        arguments += [
-                            "-n",
-                            f"'{device_block}:primary:2048M:22528M:btrfs:mount=/'",
-                        ]
-                        arguments += [
-                            "-n",
-                            f"'{device_block}:primary:22528M:43008M:btrfs:mount=/'",
-                        ]
-                        arguments += [
-                            "-n",
-                            f"'{device_block}:primary:43008M:end:btrfs:mount=/home'",
-                        ]
-                        # Add generated partitions to finals so abroot-adapter can find them
-                        finals_disk["disk"]["disk"] = device_block
-                        if not re.match(r"[0-9]", device_block[-1]):
-                            partition_name = f"{device_block}"
+                            f"'{device_block}:primary:1024M:end:ext4:mount=/'",
+                            ]
+                            # Add generated partitions to finals so abroot-adapter can find them
+                            finals_disk["disk"]["disk"] = device_block
+                            if not re.match(r"[0-9]", device_block[-1]):
+                                partition_name = f"{device_block}"
+                            else:
+                                partition_name = f"{device_block}p"
+                            finals_disk["disk"][f"{partition_name}1"] = {
+                                "fs": "fat32",
+                                "mp": "/boot/efi",
+                            }
+                            finals_disk["disk"][f"{partition_name}2"] = {
+                                "fs": "ext4",
+                                "mp": "/",
+                            }
                         else:
-                            partition_name = f"{device_block}p"
-                        finals_disk["disk"][f"{partition_name}1"] = {
-                            "fs": "fat32",
-                            "mp": "/boot/efi",
-                        }
-                        finals_disk["disk"][f"{partition_name}2"] = {
-                            "fs": "ext4",
-                            "mp": "/boot",
-                        }
-                        finals_disk["disk"][f"{partition_name}3"] = {
-                            "fs": "btrfs",
-                            "mp": "/",
-                        }
-                        finals_disk["disk"][f"{partition_name}4"] = {
-                            "fs": "btrfs",
-                            "mp": "/",
-                        }
-                        finals_disk["disk"][f"{partition_name}5"] = {
-                            "fs": "btrfs",
-                            "mp": "/home",
-                        }
+                            arguments += ["-t", f"'{device_block}:msdos'"]
+                            arguments += [
+                                "-n",
+                                f"'{device_block}:primary:start:end:ext4:mount=/'",
+                            ]
+                            # Add generated partitions to finals so abroot-adapter can find them
+                            finals_disk["disk"]["disk"] = device_block
+                            if not re.match(r"[0-9]", device_block[-1]):
+                                partition_name = f"{device_block}"
+                            else:
+                                partition_name = f"{device_block}p"
+                            finals_disk["disk"][f"{partition_name}1"] = {
+                                "fs": "ext4",
+                                "mp": "/",
+                            }
                     else:
                         device_block = value["disk"]
                         for partition, values in value.items():
@@ -168,15 +129,6 @@ class Processor:
                                     "-u",
                                     f"'{device_block}:{partition_number}:swap'",
                                 ]
-                            elif values["mp"] == "":
-                                arguments += [
-                                    "-u",
-                                    "'{}:{}:{}:flags=bios_grub'".format(
-                                        device_block,
-                                        partition_number,
-                                        values["fs"],
-                                    ),
-                                ]
                             else:
                                 arguments += [
                                     "-u",
@@ -195,9 +147,6 @@ class Processor:
             f.write("# This file was created by the Vanilla Installer.\n")
             f.write("# Do not edit this file manually!\n\n")
 
-            if is_almost_supported:
-                f.write("almost enter rw\n")
-
             f.write("set -e -x\n\n")
 
             if "VANILLA_FAKE" in os.environ:
@@ -215,15 +164,6 @@ class Processor:
             if "VANILLA_SKIP_INSTALL" not in os.environ:
                 for arg in arguments:
                     f.write(arg + " ")
-
-            if "VANILLA_SKIP_POSTINSTALL" not in os.environ:
-                f.write("\n")
-                f.write("echo 'Starting the post-installation process ...'\n")
-                f.write(
-                    "sudo abroot-adapter '{}' '{}'".format(
-                        json.dumps(finals_disk), json.dumps(finals_timezone)
-                    )
-                )
 
             f.flush()
             f.close()

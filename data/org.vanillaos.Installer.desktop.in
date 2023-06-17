@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=Vanilla OS Installer
+Name=Installer
 Exec=vanilla-installer
 Icon=org.vanillaos.Installer
 Terminal=false

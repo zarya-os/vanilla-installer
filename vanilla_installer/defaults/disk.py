@@ -35,10 +35,10 @@ class VanillaDefaultDiskEntry(Adw.ActionRow):
         self.__disk = disk
         self.set_title(disk.name)
 
-        if disk.size < 50_000_000_000:
+        if disk.size < 25_000_000_000:
             self.set_sensitive(False)
             self.set_subtitle(
-                _("Not enough space: {0}/{1}").format(disk.pretty_size, "50 GB")
+                _("Not enough space: {0}/{1}").format(disk.pretty_size, "25 GB")
             )
         else:
             self.set_subtitle(disk.pretty_size)
@@ -137,8 +137,6 @@ class PartitionRow(Adw.ActionRow):
         self.__page.update_partition_rows()
         # Checks whether we can proceed with installation
         self.__page.update_apply_button_status()
-        # Checks whether root partitions are the same size
-        self.__page.check_root_partitions_size_equal()
         # Checks whether selected partitions are big enough
         self.__page.check_selected_partitions_sizes()
 
@@ -154,6 +152,7 @@ class PartitionSelector(Adw.PreferencesPage):
     __gtype_name__ = "PartitionSelector"
 
     entire_disk_row = Gtk.Template.Child()
+    efi_auto_row = Gtk.Template.Child()
     chk_entire_disk = Gtk.Template.Child()
     chk_manual_part = Gtk.Template.Child()
     manual_part_row = Gtk.Template.Child()
@@ -161,59 +160,32 @@ class PartitionSelector(Adw.PreferencesPage):
     open_gparted_row = Gtk.Template.Child()
     launch_gparted = Gtk.Template.Child()
 
-    boot_part = Gtk.Template.Child()
     efi_part = Gtk.Template.Child()
-    bios_part = Gtk.Template.Child()
-    roots_part = Gtk.Template.Child()
+    root_part = Gtk.Template.Child()
     home_part = Gtk.Template.Child()
     swap_part = Gtk.Template.Child()
 
-    boot_part_expand = Gtk.Template.Child()
     efi_part_expand = Gtk.Template.Child()
-    bios_part_expand = Gtk.Template.Child()
-    abroot_a_part_expand = Gtk.Template.Child()
-    abroot_b_part_expand = Gtk.Template.Child()
+    root_part_expand = Gtk.Template.Child()
     home_part_expand = Gtk.Template.Child()
     swap_part_expand = Gtk.Template.Child()
 
-    abroot_info_button = Gtk.Template.Child()
-    abroot_info_popover = Gtk.Template.Child()
+    use_home_part = Gtk.Template.Child()
     use_swap_part = Gtk.Template.Child()
 
-    boot_small_error = Gtk.Template.Child()
     efi_small_error = Gtk.Template.Child()
-    bios_small_error = Gtk.Template.Child()
-    roots_small_error = Gtk.Template.Child()
+    root_small_error = Gtk.Template.Child()
     home_small_error = Gtk.Template.Child()
-    root_sizes_differ_error = Gtk.Template.Child()
 
     # NOTE: Keys must be the same name as template children
     __selected_partitions: dict[str, dict[str, Union[Partition, str, None]]] = {
-        "boot_part_expand": {
-            "mountpoint": "/boot",
+        "efi_part_expand": {
+            "mountpoint": "/boot/efi",
             "min_size": 943_718_400,  # 900 MB
             "partition": None,
             "fstype": None,
         },
-        "efi_part_expand": {
-            "mountpoint": "/boot/efi",
-            "min_size": 536_870_912,  # 512 MB
-            "partition": None,
-            "fstype": None,
-        },
-        "bios_part_expand": {
-            "mountpoint": "",
-            "min_size": 1_048_576,  # 512 MB
-            "partition": None,
-            "fstype": None,
-        },
-        "abroot_a_part_expand": {
-            "mountpoint": "/",
-            "min_size": 10_737_418_240,  # 10 GB
-            "partition": None,
-            "fstype": None,
-        },
-        "abroot_b_part_expand": {
+        "root_part_expand": {
             "mountpoint": "/",
             "min_size": 10_737_418_240,  # 10 GB
             "partition": None,
@@ -231,7 +203,6 @@ class PartitionSelector(Adw.PreferencesPage):
             "fstype": None,
         },
     }
-    __valid_root_partitions = False
     __valid_partition_sizes = False
 
     def __init__(self, parent, partitions, **kwargs):
@@ -243,14 +214,8 @@ class PartitionSelector(Adw.PreferencesPage):
         self.chk_manual_part.connect("toggled", self.__on_chk_manual_part_toggled)
         self.chk_entire_disk.connect("toggled", self.__on_chk_entire_disk_toggled)
         self.launch_gparted.connect("clicked", self.__on_launch_gparted)
-        self.abroot_info_button.connect("clicked", self.__on_info_button_clicked)
+        self.use_home_part.connect("state-set", self.__on_use_home_toggled)
         self.use_swap_part.connect("state-set", self.__on_use_swap_toggled)
-
-        self.__boot_part_rows = self.__generate_partition_list_widgets(self.boot_part_expand, "ext4", False)
-        for i, widget in enumerate(self.__boot_part_rows):
-            self.boot_part_expand.add_row(widget)
-            widget.add_siblings(self.__boot_part_rows[:i] + self.__boot_part_rows[i+1:])
-            self.__selected_partitions["boot_part_expand"]["fstype"] = "ext4"
 
         if Systeminfo.is_uefi():
             # Configure EFI rows
@@ -260,40 +225,24 @@ class PartitionSelector(Adw.PreferencesPage):
                 widget.add_siblings(self.__efi_part_rows[:i] + self.__efi_part_rows[i+1:])
                 self.__selected_partitions["efi_part_expand"]["fstype"] = "fat32"
 
-            # Remove BIOS rows
-            self.bios_part.set_visible(False)
-            if "bios_part_expand" in self.__selected_partitions:
-                del self.__selected_partitions["bios_part_expand"]
         else:
-            # Configure BIOS rows
-            self.__bios_part_rows = self.__generate_partition_list_widgets(self.bios_part_expand, "ext4", False)
-            for i, widget in enumerate(self.__bios_part_rows):
-                self.bios_part_expand.add_row(widget)
-                widget.add_siblings(self.__bios_part_rows[:i] + self.__bios_part_rows[i+1:])
-                self.__selected_partitions["bios_part_expand"]["fstype"] = "ext4"
-
             # Remove EFI rows
             self.efi_part.set_visible(False)
+            self.efi_auto_row.set_visible(False)
             if "efi_part_expand" in self.__selected_partitions:
                 del self.__selected_partitions["efi_part_expand"]
 
-        self.__abroot_a_part_rows = self.__generate_partition_list_widgets(self.abroot_a_part_expand, "btrfs", False)
-        for i, widget in enumerate(self.__abroot_a_part_rows):
-            self.abroot_a_part_expand.add_row(widget)
-            widget.add_siblings(self.__abroot_a_part_rows[:i] + self.__abroot_a_part_rows[i+1:])
-            self.__selected_partitions["abroot_a_part_expand"]["fstype"] = "btrfs"
+        self.__root_part_rows = self.__generate_partition_list_widgets(self.root_part_expand, "ext4", False)
+        for i, widget in enumerate(self.__root_part_rows):
+            self.root_part_expand.add_row(widget)
+            widget.add_siblings(self.__root_part_rows[:i] + self.__root_part_rows[i+1:])
+            self.__selected_partitions["root_part_expand"]["fstype"] = "ext4"
 
-        self.__abroot_b_part_rows = self.__generate_partition_list_widgets(self.abroot_b_part_expand, "btrfs", False)
-        for i, widget in enumerate(self.__abroot_b_part_rows):
-            self.abroot_b_part_expand.add_row(widget)
-            widget.add_siblings(self.__abroot_b_part_rows[:i] + self.__abroot_b_part_rows[i+1:])
-            self.__selected_partitions["abroot_b_part_expand"]["fstype"] = "btrfs"
-
-        self.__home_part_rows = self.__generate_partition_list_widgets(self.home_part_expand)
+        self.__home_part_rows = self.__generate_partition_list_widgets(self.home_part_expand, "ext4", False)
         for i, widget in enumerate(self.__home_part_rows):
             self.home_part_expand.add_row(widget)
             widget.add_siblings(self.__home_part_rows[:i] + self.__home_part_rows[i+1:])
-            self.__selected_partitions["home_part_expand"]["fstype"] = "btrfs"
+            self.__selected_partitions["home_part_expand"]["fstype"] = "ext4"
 
         self.__swap_part_rows = self.__generate_partition_list_widgets(self.swap_part_expand, "swap", False)
         for i, widget in enumerate(self.__swap_part_rows):
@@ -301,19 +250,16 @@ class PartitionSelector(Adw.PreferencesPage):
             widget.add_siblings(self.__swap_part_rows[:i] + self.__swap_part_rows[i+1:])
             self.__selected_partitions["swap_part_expand"]["fstype"] = "swap"
 
-        # Refresh partition UI to make it insensitive
+        # Refresh partition UI to make it not visible
         self.__on_chk_manual_part_toggled(self.chk_manual_part)
 
     def __on_chk_manual_part_toggled(self, widget):
-        self.boot_part.set_sensitive(widget.get_active())
-        self.open_gparted_group.set_sensitive(widget.get_active())
+        self.open_gparted_group.set_visible(widget.get_active())
         if Systeminfo.is_uefi():
-            self.efi_part.set_sensitive(widget.get_active())
-        else:
-            self.bios_part.set_sensitive(widget.get_active())
-        self.roots_part.set_sensitive(widget.get_active())
-        self.home_part.set_sensitive(widget.get_active())
-        self.swap_part.set_sensitive(widget.get_active())
+            self.efi_part.set_visible(widget.get_active())
+        self.root_part.set_visible(widget.get_active())
+        self.home_part.set_visible(widget.get_active())
+        self.swap_part.set_visible(widget.get_active())
 
         self.update_apply_button_status()
 
@@ -330,7 +276,7 @@ class PartitionSelector(Adw.PreferencesPage):
         else:
             subprocess.Popen(["gparted"])
 
-    def __generate_partition_list_widgets(self, parent_widget, default_fs="btrfs", add_dropdowns=True):
+    def __generate_partition_list_widgets(self, parent_widget, default_fs="ext4", add_dropdowns=True):
         partition_widgets = []
 
         for i, partition in enumerate(self.__partitions):
@@ -343,9 +289,6 @@ class PartitionSelector(Adw.PreferencesPage):
 
         return partition_widgets
 
-    def __on_info_button_clicked(self, widget):
-        self.abroot_info_popover.popup()
-
     def update_apply_button_status(self):
         # If not manual partitioning, it's always valid
         if self.chk_entire_disk.get_active():
@@ -353,69 +296,25 @@ class PartitionSelector(Adw.PreferencesPage):
             return
 
         for k, val in self.__selected_partitions.items():
-            if val["partition"] == None and (
-                k != "swap_part_expand" or self.use_swap_part.get_active()
-            ):
+            if val["partition"] is None and (k != "swap_part_expand" or self.use_swap_part.get_active()) and (k != "home_part_expand" or self.use_home_part.get_active()):
                 self.__parent.set_btn_apply_sensitive(False)
                 return
 
-        if self.__valid_root_partitions and self.__valid_partition_sizes:
+        if self.__valid_partition_sizes:
             self.__parent.set_btn_apply_sensitive(True)
-
-    def check_root_partitions_size_equal(self):
-        if self.__selected_partitions["abroot_a_part_expand"]["partition"]:
-            a_root_part_size = self.__selected_partitions["abroot_a_part_expand"][
-                "partition"
-            ].size
-        else:
-            a_root_part_size = None
-
-        if self.__selected_partitions["abroot_b_part_expand"]["partition"]:
-            b_root_part_size = self.__selected_partitions["abroot_b_part_expand"][
-                "partition"
-            ].size
-        else:
-            b_root_part_size = None
-
-        if (
-            a_root_part_size
-            and b_root_part_size
-            and a_root_part_size != b_root_part_size
-        ):
-            self.abroot_a_part_expand.get_style_context().add_class("error")
-            self.abroot_b_part_expand.get_style_context().add_class("error")
-            self.root_sizes_differ_error.set_visible(True)
-            self.__valid_root_partitions = False
-        else:
-            if self.abroot_a_part_expand.get_style_context().has_class("error"):
-                self.abroot_a_part_expand.get_style_context().remove_class("error")
-            if self.abroot_b_part_expand.get_style_context().has_class("error"):
-                self.abroot_b_part_expand.get_style_context().remove_class("error")
-            self.root_sizes_differ_error.set_visible(False)
-            self.__valid_root_partitions = True
 
     def check_selected_partitions_sizes(self):
         # Clear any existing errors
         self.__valid_partition_sizes = True
-        self.boot_small_error.set_visible(False)
         if Systeminfo.is_uefi():
             self.efi_small_error.set_visible(False)
-        else:
-            self.bios_small_error.set_visible(False)
-        self.roots_small_error.set_visible(False)
+        self.root_small_error.set_visible(False)
         self.home_small_error.set_visible(False)
-        if self.boot_part_expand.get_style_context().has_class("error"):
-            self.boot_part_expand.get_style_context().remove_class("error")
         if Systeminfo.is_uefi():
             if self.efi_part_expand.get_style_context().has_class("error"):
                 self.efi_part_expand.get_style_context().remove_class("error")
-        else:
-            if self.bios_part_expand.get_style_context().has_class("error"):
-                self.bios_part_expand.get_style_context().remove_class("error")
-        if self.abroot_a_part_expand.get_style_context().has_class("error"):
-            self.abroot_a_part_expand.get_style_context().remove_class("error")
-        if self.abroot_b_part_expand.get_style_context().has_class("error"):
-            self.abroot_b_part_expand.get_style_context().remove_class("error")
+        if self.root_part_expand.get_style_context().has_class("error"):
+            self.root_part_expand.get_style_context().remove_class("error")
         if self.home_part_expand.get_style_context().has_class("error"):
             self.home_part_expand.get_style_context().remove_class("error")
 
@@ -424,34 +323,32 @@ class PartitionSelector(Adw.PreferencesPage):
                 if info["min_size"] > info["partition"].size:
                     self.__valid_partition_sizes = False
                     error_description = _("Partition must be at least {}").format(Diskutils.pretty_size(info["min_size"]))
-                    if partition == "boot_part_expand":
-                        self.boot_part_expand.get_style_context().add_class("error")
-                        self.boot_small_error.set_description(error_description)
-                        self.boot_small_error.set_visible(True)
-                    elif partition == "efi_part_expand":
+                    if partition == "efi_part_expand":
                         self.efi_part_expand.get_style_context().add_class("error")
                         self.efi_small_error.set_description(error_description)
                         self.efi_small_error.set_visible(True)
-                    elif partition == "abroot_a_part_expand" or partition == "abroot_b_part_expand":
-                        self.abroot_a_part_expand.get_style_context().add_class("error")
-                        self.abroot_b_part_expand.get_style_context().add_class("error")
-                        self.roots_small_error.set_description(error_description)
-                        self.roots_small_error.set_visible(True)
+                    elif partition == "root_part_expand":
+                        self.root_part_expand.get_style_context().add_class("error")
+                        self.root_small_error.set_description(error_description)
+                        self.root_small_error.set_visible(True)
                     elif partition == "home_part_expand":
                         self.home_part_expand.get_style_context().add_class("error")
                         self.home_small_error.set_description(error_description)
                         self.home_small_error.set_visible(True)
 
-        # Special case for BIOS, where the partitions needs to be EXACTLY 1 MiB
-        if not Systeminfo.is_uefi():
-            size = self.__selected_partitions["bios_part_expand"]["min_size"]
-            partition = self.__selected_partitions["bios_part_expand"]["partition"]
-            error_description = _("Partition must EXACTLY {}").format(Diskutils.pretty_size(size))
-            if partition is not None:
-                if size != partition.size:
-                    self.bios_part_expand.get_style_context().add_class("error")
-                    self.bios_small_error.set_description(error_description)
-                    self.bios_small_error.set_visible(True)
+    def __on_use_home_toggled(self, widget, state):
+        if state == False:
+            for child_row in self.__home_part_rows:
+                child_row.select_button.set_active(False)
+
+            self.__selected_partitions["home_part_expand"]["partition"] = None
+            self.home_part_expand.set_title(_("No partition selected"))
+            self.home_part_expand.set_subtitle(
+                _("Please select a partition from the options below")
+            )
+            self.update_partition_rows()
+
+        self.update_apply_button_status()
 
     def __on_use_swap_toggled(self, widget, state):
         if state == False:
@@ -469,17 +366,13 @@ class PartitionSelector(Adw.PreferencesPage):
 
     def update_partition_rows(self):
         rows = [
-            self.__boot_part_rows,
-            self.__abroot_a_part_rows,
-            self.__abroot_b_part_rows,
+            self.__root_part_rows,
             self.__home_part_rows,
             self.__swap_part_rows,
         ]
 
         if Systeminfo.is_uefi():
             rows.append(self.__efi_part_rows)
-        else:
-            rows.append(self.__bios_part_rows)
 
         for row in rows:
             for child_row in row:
@@ -595,7 +488,6 @@ class VanillaDefaultDiskPartModal(Adw.Window):
 class VanillaDefaultDiskConfirmModal(Adw.Window):
     __gtype_name__ = "VanillaDefaultDiskConfirmModal"
 
-    btn_cancel = Gtk.Template.Child()
     btn_apply = Gtk.Template.Child()
     group_partitions = Gtk.Template.Child()
 
@@ -603,10 +495,7 @@ class VanillaDefaultDiskConfirmModal(Adw.Window):
         super().__init__(**kwargs)
         self.__window = window
         self.set_transient_for(self.__window)
-        self.default_width, self.default_height = self.get_default_size()
-
         # signals
-        self.btn_cancel.connect("clicked", self.__on_btn_cancel_clicked)
         self.btn_apply.connect("clicked", self.__on_btn_apply_clicked)
 
         for partition, values in partition_recipe.items():
@@ -615,7 +504,6 @@ class VanillaDefaultDiskConfirmModal(Adw.Window):
                 entry.set_title(partition_recipe[partition]["disk"])
                 entry.set_subtitle(_("Entire disk will be used."))
             else:
-                self.set_default_size(self.default_width, 650)
                 if partition == "disk":
                     continue
                 entry.set_title(partition)
@@ -626,9 +514,6 @@ class VanillaDefaultDiskConfirmModal(Adw.Window):
                     )
                 )
             self.group_partitions.add(entry)
-
-    def __on_btn_cancel_clicked(self, widget):
-        self.destroy()
 
     def __on_btn_apply_clicked(self, widget):
         self.__window.next()

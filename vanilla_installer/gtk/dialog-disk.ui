@@ -5,8 +5,8 @@
     <property name="title" translatable="yes">Configure Disk</property>
     <property name="modal">true</property>
     <property name="deletable">false</property>
-    <property name="default-width">650</property>
-    <property name="default-height">850</property>
+    <property name="default-width">600</property>
+    <property name="default-height">700</property>
     <child>
       <object class="GtkBox">
         <property name="orientation">vertical</property>
@@ -25,6 +25,9 @@
                 </style>
               </object>
             </child>
+            <style>
+              <class name="flat"/>
+            </style>
           </object>
         </child>
         <child>
